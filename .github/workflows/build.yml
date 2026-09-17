@@ -1,0 +1,59 @@
+name: Build askWAM (native + BOF + .NET)
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Install .NET Framework 4.8 developer pack
+        shell: pwsh
+        run: choco install netfx-4.8-devpack -y --no-progress
+
+      - name: Build native x64 client
+        shell: pwsh
+        working-directory: src/native
+        run: |
+          .\build.ps1 -Configuration Release
+          Get-ChildItem -Recurse bin\ | Format-Table Name, Length
+
+      - name: Build BOF
+        shell: pwsh
+        working-directory: src/bof
+        run: |
+          .\build.ps1 -Configuration Release
+          Get-ChildItem -Recurse bin\ | Format-Table Name, Length
+
+      - name: Build .NET Framework 4.8 client
+        shell: pwsh
+        working-directory: src/dotnet
+        run: |
+          msbuild AskWAM.csproj /p:Configuration=Release /nologo /verbosity:minimal
+          Get-ChildItem -Recurse bin\ | Format-Table Name, Length
+
+      - name: Collect artifacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          Copy-Item src/native/bin/Release/askwam.exe    artifacts/askwam-native.exe
+          Copy-Item src/bof/bin/Release/askwam_bof.x64.o artifacts/askwam_bof.x64.o
+          Copy-Item src/bof/askwam.cna                   artifacts/askwam.cna
+          Copy-Item src/dotnet/bin/Release/askwam.exe    artifacts/askwam-dotnet.exe
+          Get-ChildItem artifacts | Format-Table Name, Length
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: askwam-build-${{ github.sha }}
+          path: artifacts/
+          retention-days: 90
+          if-no-files-found: error
