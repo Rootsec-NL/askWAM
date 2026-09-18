@@ -15,10 +15,6 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
-      - name: Install .NET Framework 4.8 developer pack
-        shell: pwsh
-        run: choco install netfx-4.8-devpack -y --no-progress
-
       - name: Build native x64 client
         shell: pwsh
         working-directory: src/native
@@ -33,7 +29,16 @@ jobs:
           .\build.ps1 -Configuration Release
           Get-ChildItem -Recurse bin\ | Format-Table Name, Length
 
-      - name: Build .NET Framework 4.8 client
+      - name: Install .NET Framework 4.8 developer pack (optional)
+        id: netfx_install
+        continue-on-error: true
+        shell: pwsh
+        run: choco install netfx-4.8-devpack -y --no-progress
+
+      - name: Build .NET Framework 4.8 client (optional)
+        id: dotnet_build
+        if: steps.netfx_install.outcome == 'success'
+        continue-on-error: true
         shell: pwsh
         working-directory: src/dotnet
         run: |
@@ -47,7 +52,12 @@ jobs:
           Copy-Item src/native/bin/Release/askwam.exe    artifacts/askwam-native.exe
           Copy-Item src/bof/bin/Release/askwam_bof.x64.o artifacts/askwam_bof.x64.o
           Copy-Item src/bof/askwam.cna                   artifacts/askwam.cna
-          Copy-Item src/dotnet/bin/Release/askwam.exe    artifacts/askwam-dotnet.exe
+          if (Test-Path src/dotnet/bin/Release/askwam.exe) {
+              Copy-Item src/dotnet/bin/Release/askwam.exe artifacts/askwam-dotnet.exe
+              Write-Host "✓ .NET build included"
+          } else {
+              Write-Host "⚠ .NET build skipped/failed — native + BOF only"
+          }
           Get-ChildItem artifacts | Format-Table Name, Length
 
       - name: Upload artifacts
